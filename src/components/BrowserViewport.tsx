@@ -16,6 +16,9 @@ import {
   ExternalLink,
   RotateCw,
   BookOpen,
+  Sparkles,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 
 interface BrowserViewportProps {
@@ -31,6 +34,7 @@ interface BrowserViewportProps {
   onSelectSearchEngine: (id: string) => void;
   onOpenSyncModal: () => void;
   onCloseSplitView: () => void;
+  onOpenInAppWindow?: (url: string, title?: string) => void;
 }
 
 export const BrowserViewport: React.FC<BrowserViewportProps> = ({
@@ -46,6 +50,7 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({
   onSelectSearchEngine,
   onOpenSyncModal,
   onCloseSplitView,
+  onOpenInAppWindow,
 }) => {
   // Track restricted sites detected via postMessage or known domains
   const [restrictedTabs, setRestrictedTabs] = useState<Record<string, boolean>>({});
@@ -60,6 +65,12 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({
 
       if (type === 'OMNI_BROWSER_NAVIGATE' && url) {
         onNavigate(url);
+      } else if (type === 'OMNI_BROWSER_URL_CHANGED' && url) {
+        // SPA route changed (e.g. Instagram transitions to signup page in memory)
+        onUpdateTabInfo(activeTab.id, {
+          url,
+          title: title || activeTab.title,
+        });
       } else if (type === 'OMNI_BROWSER_LOADED') {
         onUpdateTabInfo(activeTab.id, {
           isLoading: false,
@@ -78,13 +89,11 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({
     return () => window.removeEventListener('message', handleMessage);
   }, [activeTab.id, activeTab.title, onNavigate, onUpdateTabInfo]);
 
-  // Open URL in dedicated browser popup window
-  const openInPopupWindow = (url: string) => {
-    window.open(
-      url,
-      '_blank',
-      'width=1150,height=850,resizable=yes,scrollbars=yes,status=yes'
-    );
+  // Open URL strictly inside the website in the In-App Floating Window
+  const openInInternalWindow = (url: string) => {
+    if (onOpenInAppWindow) {
+      onOpenInAppWindow(url, activeTab.title);
+    }
   };
 
   // Render single tab viewport pane
@@ -116,13 +125,20 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({
 
     const iframeSrc = getIframeSrc(tab.url, tab.mode);
 
-    // Check if domain is a known strict anti-iframe walled garden
+    // Check if domain is a known strict anti-iframe walled garden or auth page
+    const isInstagram = /instagram\.com/i.test(tab.url);
     const isKnownStrictSite =
-      /instagram\.com|facebook\.com|twitter\.com|x\.com|accounts\.google\.com|netflix\.com|discord\.com\/login|threads\.net/i.test(
+      /instagram\.com|facebook\.com|twitter\.com|x\.com|accounts\.google\.com|nid\.naver\.com|accounts\.kakao\.com|netflix\.com|discord\.com\/login|threads\.net/i.test(
         tab.url
       );
+    const isAuthPage = /emailsignup|signup|register|login|signin|oauth|accounts/i.test(tab.url);
     const isRestricted =
-      (restrictedTabs[tab.id] || isKnownStrictSite) && !dismissedBanners[tab.id];
+      (restrictedTabs[tab.id] || isKnownStrictSite || (isAuthPage && isInstagram)) && !dismissedBanners[tab.id];
+
+    // Open strictly inside the web app in the In-App Floating Window
+    const handleOpenInApp = () => {
+      openInInternalWindow(tab.url);
+    };
 
     // Viewport width styling
     const viewportWidthStyles: Record<DeviceViewport, string> = {
@@ -140,32 +156,50 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({
           </div>
         )}
 
-        {/* Smart Compatibility Assistant Banner for Restricted / Walled Garden Sites */}
+        {/* Smart Compatibility & Auth Assistant Banner for Instagram & Restricted Sites */}
         {isRestricted && (
-          <div className="relative z-20 bg-zinc-900 border-b border-amber-900/60 px-3.5 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-zinc-300 shadow-sm animate-in fade-in duration-150">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                <strong className="text-zinc-100">{getCleanHost(tab.url)}</strong>은(는)
-                보안 및 쿠키 보호 정책으로 인해 내부 iframe 내 접근/로그인을 제한합니다.
-              </span>
+          <div className="relative z-20 bg-zinc-900 border-b border-amber-900/60 px-3.5 py-2.5 flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs text-zinc-300 shadow-md">
+            <div className="flex items-start md:items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 md:mt-0" />
+              <div>
+                <span className="font-semibold text-zinc-100 mr-1.5">
+                  {isInstagram ? 'Instagram 회원가입 및 보안 정책 안내' : `${getCleanHost(tab.url)} 보안 제한 감지`}:
+                </span>
+                <span className="text-zinc-300">
+                  {isInstagram
+                    ? "인스타그램은 보안 쿠키 정책으로 인해 일반 웹 임베드 가입을 차단합니다. 100% 정상 작동을 위해 '웹사이트 내부 전용 창'을 이용하세요."
+                    : '이 웹사이트는 보안 및 쿠키 정책으로 인해 기본 임베드 접근을 제한합니다. 웹사이트 내부 창으로 열면 정상 작동합니다.'}
+                </span>
+              </div>
             </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
               <button
                 type="button"
-                onClick={() => openInPopupWindow(tab.url)}
-                className="px-2.5 py-1 bg-zinc-100 hover:bg-white text-zinc-950 font-semibold rounded-sm text-xs flex items-center gap-1.5 shadow-sm transition-colors"
-                title="Open in a dedicated popup window with full cookies and login"
+                onClick={handleOpenInApp}
+                className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold rounded-sm text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                title="Open inside this web app as a dedicated movable in-app window"
               >
-                <ExternalLink className="w-3 h-3" />
-                <span>독립 팝업으로 열기</span>
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{isInstagram ? '✨ 내부 전용 창으로 가입/로그인' : '✨ 내부 전용 창으로 열기'}</span>
               </button>
+
+              {isInstagram && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('https://www.instagram.com/accounts/emailsignup/?hl=ko', tab.id)}
+                  className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-sm text-xs flex items-center gap-1 cursor-pointer"
+                  title="Reload with Korean parameter"
+                >
+                  <RotateCw className="w-3 h-3" />
+                  <span>새로고침</span>
+                </button>
+              )}
 
               <button
                 type="button"
                 onClick={() => onUpdateTabInfo(tab.id, { mode: 'reader' })}
-                className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-sm text-xs flex items-center gap-1"
+                className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-sm text-xs flex items-center gap-1 cursor-pointer"
                 title="Try Reader Mode"
               >
                 <BookOpen className="w-3 h-3" />
@@ -177,8 +211,8 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({
                 onClick={() =>
                   setDismissedBanners((prev) => ({ ...prev, [tab.id]: true }))
                 }
-                className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 rounded-sm"
-                title="Dismiss"
+                className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 rounded-sm cursor-pointer"
+                title="닫기"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -209,17 +243,75 @@ export const BrowserViewport: React.FC<BrowserViewportProps> = ({
               </div>
             )}
 
-            {/* The Web Browser IFrame */}
+            {/* The Web Browser IFrame with expanded sandbox permissions */}
             <iframe
               src={iframeSrc}
               title={tab.title}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               className="w-full flex-1 border-0 bg-white"
               onLoad={() => {
                 onUpdateTabInfo(tab.id, { isLoading: false });
               }}
             />
+
+            {/* On-Canvas Inside-Window Zoom Controller */}
+            <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1 bg-zinc-900/90 border border-zinc-700/80 backdrop-blur-md rounded-md px-2 py-1 shadow-xl text-xs text-zinc-300">
+              <button
+                type="button"
+                onClick={() => onUpdateTabInfo(tab.id, { zoom: Math.max(30, tab.zoom - 10) })}
+                className="p-1 hover:text-white rounded-xs cursor-pointer"
+                title="창 내부 축소 (Zoom Out)"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onUpdateTabInfo(tab.id, { zoom: 100 })}
+                className="text-[11px] font-mono px-1.5 hover:text-amber-400 font-semibold cursor-pointer"
+                title="100% 원래 크기 복원"
+              >
+                {tab.zoom}%
+              </button>
+              <button
+                type="button"
+                onClick={() => onUpdateTabInfo(tab.id, { zoom: Math.min(250, tab.zoom + 10) })}
+                className="p-1 hover:text-white rounded-xs cursor-pointer"
+                title="창 내부 확대 (Zoom In)"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Floating Quick Action Helper at bottom-right for Instagram & Auth */}
+            {(isInstagram || restrictedTabs[tab.id]) && (
+              <div className="absolute bottom-4 right-4 z-20 bg-zinc-900/95 border border-zinc-700/80 backdrop-blur-md rounded-md p-3 shadow-2xl max-w-xs text-xs text-zinc-200 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <span className="font-semibold text-amber-300 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    가입 및 로그인 오류 해결
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRestrictedTabs((prev) => ({ ...prev, [tab.id]: false }))}
+                    className="text-zinc-500 hover:text-zinc-300 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                <p className="text-[11px] text-zinc-400 leading-relaxed mb-2.5">
+                  'Page isn't available' 오류가 보이나요? 인스타그램 보안 정책상 내부 전용 창에서 가입 및 이메일 인증이 100% 정상 작동합니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleOpenInApp}
+                  className="w-full py-1.5 px-3 bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-sm text-xs flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>웹사이트 내부 창으로 가입하기 (권장)</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

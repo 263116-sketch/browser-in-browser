@@ -43,6 +43,7 @@ import { SyncModal } from './components/SyncModal';
 import { BookmarksManagerModal } from './components/BookmarksManagerModal';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import { SettingsModal } from './components/SettingsModal';
+import { InAppFloatingWindow } from './components/InAppFloatingWindow';
 
 const INITIAL_TAB: Tab = {
   id: 'tab-1',
@@ -64,6 +65,17 @@ export default function App() {
   const [tabs, setTabs] = useState<Tab[]>([INITIAL_TAB]);
   const [activeTabId, setActiveTabId] = useState<string>('tab-1');
   const [splitTabId, setSplitTabId] = useState<string | null>(null);
+
+  // In-Website Floating Window State (Strictly inside the website)
+  const [inAppWindow, setInAppWindow] = useState<{
+    isOpen: boolean;
+    url: string;
+    title: string;
+  }>({
+    isOpen: false,
+    url: '',
+    title: '',
+  });
 
   // User Data State
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -578,6 +590,20 @@ export default function App() {
     setSplitTabId(null);
   };
 
+  // In-App Internal Floating Window Handler (Strictly inside this website DOM)
+  const handleOpenInAppWindow = (url: string, title?: string) => {
+    let target = url;
+    if (!target || target === 'omni://newtab') {
+      target = 'https://www.instagram.com/accounts/emailsignup/';
+    }
+
+    setInAppWindow({
+      isOpen: true,
+      url: target,
+      title: title || (target.includes('instagram.com') ? 'Instagram 내부 전용 창' : getCleanHost(target)),
+    });
+  };
+
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -661,6 +687,7 @@ export default function App() {
         onOpenBookmarksManager={() => setBookmarksManagerOpen(true)}
         onOpenHistory={() => setHistoryDrawerOpen(true)}
         onOpenSettings={() => setSettingsModalOpen(true)}
+        onOpenInAppWindow={handleOpenInAppWindow}
       />
 
       {/* 3. Bookmarks Toolbar (if enabled) */}
@@ -693,8 +720,18 @@ export default function App() {
           }}
           onOpenSyncModal={() => setSyncModalOpen(true)}
           onCloseSplitView={() => setSplitTabId(null)}
+          onOpenInAppWindow={handleOpenInAppWindow}
         />
       </main>
+
+      {/* 5. In-Website Floating Window (Strictly inside the website DOM, movable & resizable) */}
+      <InAppFloatingWindow
+        isOpen={inAppWindow.isOpen}
+        url={inAppWindow.url}
+        title={inAppWindow.title}
+        onClose={() => setInAppWindow((prev) => ({ ...prev, isOpen: false }))}
+        onNavigate={(newUrl) => setInAppWindow((prev) => ({ ...prev, url: newUrl }))}
+      />
 
       {/* Modals & Overlays */}
       <SyncModal

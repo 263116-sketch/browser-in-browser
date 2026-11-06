@@ -59,6 +59,7 @@ interface AddressBarProps {
   onOpenBookmarksManager: () => void;
   onOpenHistory: () => void;
   onOpenSettings: () => void;
+  onOpenInAppWindow?: (url: string, title?: string) => void;
 }
 
 export const AddressBar: React.FC<AddressBarProps> = ({
@@ -85,6 +86,7 @@ export const AddressBar: React.FC<AddressBarProps> = ({
   onOpenBookmarksManager,
   onOpenHistory,
   onOpenSettings,
+  onOpenInAppWindow,
 }) => {
   const [inputValue, setInputValue] = useState(activeTab.url === 'omni://newtab' ? '' : activeTab.url);
   const [isFocused, setIsFocused] = useState(false);
@@ -488,19 +490,33 @@ export const AddressBar: React.FC<AddressBarProps> = ({
           <BookOpen className="w-4 h-4" />
         </button>
 
-        {/* Quick Open in Dedicated Popup Window (for Instagram, Google Login, Anti-iframe sites) */}
-        <button
-          type="button"
-          onClick={() => {
-            if (activeTab.url && activeTab.url !== 'omni://newtab') {
-              window.open(activeTab.url, '_blank', 'width=1150,height=850,resizable=yes,scrollbars=yes');
-            }
-          }}
-          className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
-          title="독립 팝업 창으로 열기 (Instagram, Google 로그인 등 외부 보안 사이트)"
-        >
-          <ExternalLink className="w-4 h-4" />
-        </button>
+        {/* Quick Open in Dedicated In-App Window (Strictly inside this website) */}
+        {(() => {
+          const isAuthOrInstagram = /instagram\.com|accounts\.google\.com|nid\.naver\.com|facebook\.com|twitter\.com|x\.com/i.test(activeTab.url) ||
+            /emailsignup|signup|register|login|signin/i.test(activeTab.url);
+
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                if (activeTab.url && activeTab.url !== 'omni://newtab' && onOpenInAppWindow) {
+                  onOpenInAppWindow(activeTab.url, activeTab.title);
+                }
+              }}
+              className={`p-1.5 rounded-md transition-all flex items-center gap-1 cursor-pointer ${
+                isAuthOrInstagram
+                  ? 'bg-amber-400 text-zinc-950 font-semibold shadow-sm hover:bg-amber-300'
+                  : 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100'
+              }`}
+              title="웹사이트 내부 전용 창으로 열기 (인스타그램 가입 및 로그인 전용)"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              {isAuthOrInstagram && (
+                <span className="text-[11px] font-bold px-1 hidden md:inline">내부 창 가입/로그인</span>
+              )}
+            </button>
+          );
+        })()}
 
         {/* Viewport switcher: Desktop / Tablet / Mobile */}
         <div className="flex items-center bg-zinc-950 rounded-md p-0.5 border border-zinc-800">
