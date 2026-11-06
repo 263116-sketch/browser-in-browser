@@ -1,0 +1,6 @@
+{
+  "name": "OmniBrowser - Cloud Sync Web Browser",
+  "description": "An internal multi-tab browser with proxy navigation, reader mode, split view, cloud-synced bookmarks, and cross-device history.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
