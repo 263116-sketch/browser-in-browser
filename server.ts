@@ -29,6 +29,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`OmniBrowser running at http://localhost:${PORT}`);
+const portNumber = Number(PORT) || 3000;
+app.listen(portNumber, '0.0.0.0', () => {
+  console.log(`OmniBrowser running at http://0.0.0.0:${portNumber}`);
 });
